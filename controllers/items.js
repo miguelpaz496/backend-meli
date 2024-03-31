@@ -3,7 +3,8 @@ const itemService = require('../services/items')
 const getSearch = async (req, res) => {
     let items = {}
     try {
-        items = await itemService.getSearch()
+        const searchText = req.query.search
+        items = await itemService.getSearch(searchText)
         res.json(items)
     } catch (error) {
         res.status(500).send(error)

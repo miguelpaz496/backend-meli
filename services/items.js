@@ -1,31 +1,33 @@
 const axios = require('axios')
 const apiMeli = process.env.API_MELI
 
-const getSearch = async () => {
+const getSearch = async (searchText) => {
     let items = {}
     let itemList = []
     let categoriesList = []
+    let categoriesNames = []
+
+    if(searchText){
+        let result = await getSearchApiMeli(searchText, 4)
     
-    let result = await axios.get(apiMeli+'sites/MLA/search?q=query')
 
-    itemList = result.data.results.map(item => {
-        return createItem(item)
-    })
+        itemList = result.results.map(item => {
+            return createItem(item)
+        })
 
-    categoriesList = result.data.available_filters.filter(filter => {
-        if(filter.id == 'category'){
-            return filter
+        categoriesList = getCategoryFilter(result.filters)
+
+        if(categoriesList){
+            categoriesNames = categoriesList.values.map(category => {
+                return  category.name
+            })
         }
-    }) 
-
-    categoriesNames = categoriesList[0].values.map(category => {
-        return  category.name
-    })
-
+                
+    }
 
     return items = {
         author: signResponse(),
-        categories: categoriesNames,
+        categories: categoriesNames.length ? categoriesNames : ["Sin categorias"],
         items: itemList
     }
 
@@ -33,14 +35,23 @@ const getSearch = async () => {
 
 const getItem = async (id) => {
 
-    const result = await axios.get(apiMeli+`items/${id}`)
-    const resultAllItems = await axios.get(apiMeli+'sites/MLA/search?q=query')
-    const resultDescription = await axios.get(apiMeli+`items/${id}/description`)
-    const availableQuantity = getAvailableQuantity(id,resultAllItems.data.results)
-    let description = resultDescription.data.plain_text
-    let newItem = createItem(result.data)
-    newItem.sold_quantity = result.data.initial_quantity - availableQuantity
+    const result = await getItemDescription(id,"")
+    const resultAllItems = await getSearchApiMeli(result.title, 4)
+    const resultDescription = await getItemDescription(id,"description")
+    const availableQuantity = getAvailableQuantity(id,resultAllItems.results)
+    
+    const categoriesList = getCategoryFilter(resultAllItems.filters)
+    let category = getCategoryName(categoriesList,result.category_id)
+
+    if(!category){
+        const categoriesList = getCategoryFilter(resultAllItems.available_filters)
+        category = getCategoryName(categoriesList,result.category_id)
+    }
+    let description = resultDescription.plain_text
+    let newItem = createItem(result)
+    newItem.sold_quantity = result.initial_quantity - availableQuantity
     newItem.description = description
+    newItem.category = category?.name ? category.name : "Sin catergoria"
 
     return items = {
         author: signResponse(),
@@ -49,8 +60,39 @@ const getItem = async (id) => {
 }
 
 const getAvailableQuantity = (id, items) => {
+    let quantity = ""
     const value = items.filter(item => item.id === id ? item : null)
-    return value[0].available_quantity;
+    if(value.length){
+        quantity = value[0].available_quantity
+    }
+
+    return quantity;
+}
+
+const getCategoryFilter = (filters) => {
+    let categoriesList = filters.filter(filter => {
+        if(filter.id == 'category'){
+            return filter
+        }
+    })
+
+    return categoriesList[0]
+}
+
+const getCategoryName = (categories, id) => {
+
+    let categoryName = ''
+
+    if(categories?.values){
+        categoryName = categories.values.filter(category => {
+            if(category.id == id){
+                return category
+            }
+        })
+        categoryName = categoryName[0]
+    }
+
+    return categoryName
 }
 
 
@@ -89,6 +131,21 @@ const separatePrice = (price) => {
         amount: priceText[0] ? Number(priceText[0]): 0,
         decimals: priceText[1] ? Number(priceText[1]): 0
     }
+}
+
+const getSearchApiMeli = async (search,limit) => {
+    let response = {}
+    response = await axios.get(apiMeli+`sites/MLA/search?q=${search}&limit=${limit}`)
+    return response.data
+}
+
+const getItemDescription = async (id,description) => {
+    let response = {}
+    if(description.length){
+        description = '/' + description
+    }
+    response = await axios.get(apiMeli+`items/${id}`+description)
+    return response.data
 }
 
 
